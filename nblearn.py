@@ -1,8 +1,7 @@
 import os
-import math
-import sys
 import string
-from itertools import islice
+import sys
+
 
 def populate_stopwords(stopword_file):
     global stopwords_list
@@ -15,7 +14,11 @@ def populate_stopwords(stopword_file):
 
 def correct_words(word_list):
     global stopwords_list
+
     result = []
+    # Remove digits
+    word_list = [word for word in word_list if not isinstance(word, int)]
+    # Remove digits within words
     for word in word_list:
         word_string = ""
         for i in word:
@@ -26,24 +29,11 @@ def correct_words(word_list):
     return result
 
 
-def read_model_file():
+def parse_file(file_path, identifier):
+    global all_vocabulary, stopwords_list
 
-    with open("nbmodel.txt", 'r') as model_file:
-        for n_lines in iter(lambda: tuple(islice(model_file, 4)), ()):
-            dn = n_lines[0].split(" ")[-1]
-            dp = n_lines[1].split(" ")[-1]
-            tn = n_lines[2].split(" ")[-1]
-            tp = n_lines[3].split(" ")[-1]
-            key = n_lines[1].split(" ")[1]
-
-            all_vocabulary[key] = [float(dn), float(dp), float(tn), float(tp)]
-
-
-def get_counts_dictionary(file_path):
-    count_dict = {}
-
-    with open(file_path, 'r') as my_file:
-        for line in my_file:
+    with open(file_path, 'r') as input_file:
+        for line in input_file:
             # Remove punctuation
             line = line.replace(".", " ")
             # Remove empty lines and empty spaces
@@ -55,48 +45,145 @@ def get_counts_dictionary(file_path):
                 word = word.lower()
                 if word not in stopwords_list and word != "":
                     word_list.append(word)
-            
-            corrected_word_list = word_list
-            
+
+            corrected_word_list = correct_words(word_list)
+
             for word in corrected_word_list:
-                if count_dict.get(word):
-                    value = count_dict.get(word) + 1
-                    count_dict[word] = value
+                if all_vocabulary.get(word, None):
+                    class_list = all_vocabulary.get(word)
                 else:
-                    count_dict[word] = 1
+                    class_list = [0, 0, 0, 0]
 
-    return count_dict
+                if identifier == 'DN':
+                    class_list[0] = class_list[0] + 1
+                elif identifier == "DP":
+                    class_list[1] = class_list[1] + 1
+                elif identifier == "TN":
+                    class_list[2] = class_list[2] + 1
+                elif identifier == "TP":
+                    class_list[3] = class_list[3] + 1
 
-def get_word_scores(word, count_dict, identifier):
+                all_vocabulary[word] = class_list
+
+        update_dictionaries(corrected_word_list, identifier)
+
+
+def update_dictionaries(word_list, identifier):
+    global dn_count, dp_count, tn_count, tp_count
+    global dn_dictionary, dp_dictionary, tn_dictionary, tp_dictionary
+
+    if identifier == "DN":
+        for word in word_list:
+            if dn_dictionary.get(word):
+                dn_dictionary[word] = dn_dictionary[word] + 1
+            else:
+                dn_dictionary[word] = 1
+        dn_count += len(word_list)
+    elif identifier == "DP":
+        for word in word_list:
+            if dp_dictionary.get(word):
+                dp_dictionary[word] = dp_dictionary[word] + 1
+            else:
+                dp_dictionary[word] = 1
+        dp_count += len(word_list)
+    elif identifier == "TN":
+        for word in word_list:
+            if tn_dictionary.get(word):
+                tn_dictionary[word] = tn_dictionary[word] + 1
+            else:
+                tn_dictionary[word] = 1
+        tn_count += len(word_list)
+    elif identifier == "TP":
+        for word in word_list:
+            if tp_dictionary.get(word):
+                tp_dictionary[word] = tp_dictionary[word] + 1
+            else:
+                tp_dictionary[word] = 1
+        tp_count += len(word_list)
+
+
+def get_all_vocabulary(file_path):
     global all_vocabulary
+    global files_count_dictionary
 
-    calculated_probability = 0
+    files_counting = []
+    for root, directory, files in os.walk(file_path):
+        for file in files:
+            files_counting.append(root + "/" + file)
+            if file == "README.txt":
+                continue
+            if not file.endswith(".txt"):
+                continue
 
-    if all_vocabulary.get(word):
-        count = float(count_dict[word])
-        if identifier == "DN":
-            calculated_probability = all_vocabulary[word][0]
-        elif identifier == "DP":
-            calculated_probability = all_vocabulary[word][1]
-        elif identifier == "TN":
-            calculated_probability = all_vocabulary[word][2]
-        elif identifier == "TP":
-            calculated_probability = all_vocabulary[word][3]
+            read_file_path = root + "/" + file
 
-        calculated_probability = math.log(calculated_probability, 10)
-        return calculated_probability * count
+            if "deceptive" in read_file_path and "negative" in read_file_path:
+                parse_file(read_file_path, "DN")
+                files_count_dictionary["DN"] += 1
+            elif "deceptive" in read_file_path and "positive" in read_file_path:
+                parse_file(read_file_path, "DP")
+                files_count_dictionary["DP"] += 1
+            elif "truthful" in read_file_path and "negative" in read_file_path:
+                parse_file(read_file_path, "TN")
+                files_count_dictionary["TN"] += 1
+            elif "truthful" in read_file_path and "positive" in read_file_path:
+                parse_file(read_file_path, "TP")
+                files_count_dictionary["TP"] += 1
 
-    return calculated_probability
+
+def generate_all_probabilities():
+    global dn_count, dp_count, tn_count, tp_count
+    global dn_dictionary, dp_dictionary, tn_dictionary, tp_dictionary
+
+    for key, value_list in all_vocabulary.items():
+        dn_score = value_list[0] + 1
+        dp_score = value_list[1] + 1
+        tn_score = value_list[2] + 1
+        tp_score = value_list[3] + 1
+
+        number_of_words = len(all_vocabulary)
+        dn_posterior = (dn_score) / float(number_of_words + dn_count)
+        dp_posterior = (dp_score) / float(number_of_words + dp_count)
+        tn_posterior = (tn_score) / float(number_of_words + tn_count)
+        tp_posterior = (tp_score) / float(number_of_words + tp_count)
+
+        all_vocabulary[key] = [dn_posterior, dp_posterior, tn_posterior, tp_posterior]
+
+
+def write_model_file(prior_list):
+    with open("nbmodel.txt", "w") as model_file:
+        model_file.write("P( " + "CalcPrior" + " ) = " + str(prior_list[0]) + "\n")
+        model_file.write("P( " + "CalcPrior" + " ) = " + str(prior_list[1]) + "\n")
+        model_file.write("P( " + "CalcPrior" + " ) = " + str(prior_list[2]) + "\n")
+        model_file.write("P( " + "CalcPrior" + " ) = " + str(prior_list[3]) + "\n")
+        for key, value in all_vocabulary.items():
+            result = value
+            model_file.write("P( " + key + " | Deceptive Negative) = " + str(result[0]) + "\n")
+            model_file.write("P( " + key + " | Deceptive Positive) = " + str(result[1]) + "\n")
+            model_file.write("P( " + key + " | Truthful Negative) = " + str(result[2]) + "\n")
+            model_file.write("P( " + key + " | Truthful Positive) = " + str(result[3]) + "\n")
+
 
 if __name__ == "__main__":
-    all_vocabulary = {}
-    read_model_file()
-
     input_file_path = sys.argv[1]
 
+    all_vocabulary = {}
     stopwords_list = []
+    all_my_words = []
+    files_count_dictionary = {'DN': 0, 'DP': 0, 'TN': 0, 'TP': 0}
 
-    #populate_stopwords('stopwords.txt')
+    dn_dictionary = {}
+    dp_dictionary = {}
+    tn_dictionary = {}
+    tp_dictionary = {}
+
+    dn_count = 0
+    dp_count = 0
+    tn_count = 0
+    tp_count = 0
+
+    # populate_stopwords("stopwords.txt")
+
     stopwords_list = ["ourselves", "hers", "between", "yourself", "but", "again", "there", "about",
                       "once", "during", "out", "very", "having", "with", "they", "own", "an", "be",
                       "some", "for", "do", "its", "yours", "such", "into", "of", "most", "itself",
@@ -111,38 +198,16 @@ if __name__ == "__main__":
                       "few", "whom", "t", "being", "if", "theirs", "my", "against", "a", "by", "doing",
                       "it", "how", "further", "was", "here", "than"]
 
-    nb_output = open("nboutput.txt", 'w')
+    count = 0
+    get_all_vocabulary(input_file_path)
 
-    for root, directories, files in os.walk(input_file_path):
-        for file in files:
-            if file.endswith(".txt") and file != 'README.txt':
-                new_file_path = str(root)+'/'+file
-                counts_dictionary = get_counts_dictionary(new_file_path)
-                dp_score = math.log(all_vocabulary['CalcPrior'][0])
-                dn_score = math.log(all_vocabulary['CalcPrior'][1])
-                tn_score = math.log(all_vocabulary['CalcPrior'][2])
-                tp_score = math.log(all_vocabulary['CalcPrior'][3])
+    generate_all_probabilities()
 
-                for key,value in counts_dictionary.items():
-                    dn_score += get_word_scores(key, counts_dictionary, "DN")
-                    dp_score += get_word_scores(key, counts_dictionary, "DP")
-                    tn_score += get_word_scores(key, counts_dictionary, "TN")
-                    tp_score += get_word_scores(key, counts_dictionary, "TP")
+    total_files = sum(files_count_dictionary.values())
 
-                scores_list = [dn_score, dp_score, tn_score, tp_score]
+    dn_prior = float(files_count_dictionary['DN']) / total_files
+    dp_prior = float(files_count_dictionary['DP']) / total_files
+    tn_prior = float(files_count_dictionary['TN']) / total_files
+    tp_prior = float(files_count_dictionary['TP']) / total_files
 
-                max_score = max(scores_list)
-                max_index = scores_list.index(max_score)
-
-                if max_index == 0:
-                    nb_output.write('deceptive negative '+str(new_file_path) + "\n")
-                elif max_index == 1:
-                    nb_output.write('deceptive positive '+str(new_file_path) + "\n")
-                elif max_index == 2:
-                    nb_output.write('truthful negative '+str(new_file_path) + "\n")
-                elif max_index == 3:
-                    nb_output.write('truthful positive '+str(new_file_path) + "\n")
-    nb_output.close()
-
-
-
+    write_model_file([dn_prior, dp_prior, tn_prior, tp_prior])

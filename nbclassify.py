@@ -4,6 +4,7 @@ import sys
 import string
 from itertools import islice
 
+
 def populate_stopwords(stopword_file):
     global stopwords_list
     with open(stopword_file, 'r') as stopword:
@@ -27,7 +28,6 @@ def correct_words(word_list):
 
 
 def read_model_file():
-
     with open("nbmodel.txt", 'r') as model_file:
         for n_lines in iter(lambda: tuple(islice(model_file, 4)), ()):
             dn = n_lines[0].split(" ")[-1]
@@ -55,9 +55,9 @@ def get_counts_dictionary(file_path):
                 word = word.lower()
                 if word not in stopwords_list and word != "":
                     word_list.append(word)
-            
+
             corrected_word_list = word_list
-            
+
             for word in corrected_word_list:
                 if count_dict.get(word):
                     value = count_dict.get(word) + 1
@@ -66,6 +66,7 @@ def get_counts_dictionary(file_path):
                     count_dict[word] = 1
 
     return count_dict
+
 
 def get_word_scores(word, count_dict, identifier):
     global all_vocabulary
@@ -88,6 +89,7 @@ def get_word_scores(word, count_dict, identifier):
 
     return calculated_probability
 
+
 if __name__ == "__main__":
     all_vocabulary = {}
     read_model_file()
@@ -96,7 +98,7 @@ if __name__ == "__main__":
 
     stopwords_list = []
 
-    #populate_stopwords('stopwords.txt')
+    # populate_stopwords('stopwords.txt')
     stopwords_list = ["ourselves", "hers", "between", "yourself", "but", "again", "there", "about",
                       "once", "during", "out", "very", "having", "with", "they", "own", "an", "be",
                       "some", "for", "do", "its", "yours", "such", "into", "of", "most", "itself",
@@ -116,14 +118,14 @@ if __name__ == "__main__":
     for root, directories, files in os.walk(input_file_path):
         for file in files:
             if file.endswith(".txt") and file != 'README.txt':
-                new_file_path = str(root)+'/'+file
+                new_file_path = str(root) + '/' + file
                 counts_dictionary = get_counts_dictionary(new_file_path)
                 dp_score = math.log(all_vocabulary['CalcPrior'][0])
                 dn_score = math.log(all_vocabulary['CalcPrior'][1])
                 tn_score = math.log(all_vocabulary['CalcPrior'][2])
                 tp_score = math.log(all_vocabulary['CalcPrior'][3])
 
-                for key,value in counts_dictionary.items():
+                for key, value in counts_dictionary.items():
                     dn_score += get_word_scores(key, counts_dictionary, "DN")
                     dp_score += get_word_scores(key, counts_dictionary, "DP")
                     tn_score += get_word_scores(key, counts_dictionary, "TN")
@@ -135,14 +137,11 @@ if __name__ == "__main__":
                 max_index = scores_list.index(max_score)
 
                 if max_index == 0:
-                    nb_output.write('deceptive negative '+str(new_file_path) + "\n")
+                    nb_output.write('deceptive negative ' + str(new_file_path) + "\n")
                 elif max_index == 1:
-                    nb_output.write('deceptive positive '+str(new_file_path) + "\n")
+                    nb_output.write('deceptive positive ' + str(new_file_path) + "\n")
                 elif max_index == 2:
-                    nb_output.write('truthful negative '+str(new_file_path) + "\n")
+                    nb_output.write('truthful negative ' + str(new_file_path) + "\n")
                 elif max_index == 3:
-                    nb_output.write('truthful positive '+str(new_file_path) + "\n")
+                    nb_output.write('truthful positive ' + str(new_file_path) + "\n")
     nb_output.close()
-
-
-
